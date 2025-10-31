@@ -20,11 +20,7 @@
             <button id="create-btn">创建房间</button>
             <div class="join-box">
                 <input type="text" id="join-id" placeholder="输入房间号">
-                <select id="join-team">
-                    <option value="team1">蓝队</option>
-                    <option value="team2">红队</option>
-                </select>
-                <button id="join-btn">加入房间</button>
+                <button id="join-btn">查找房间</button>
             </div>
         </div>
 
@@ -32,18 +28,12 @@
             <h2>当前对战</h2>
             {% if rooms %}
                 {% for room in rooms %}
-                <div class="room-item">
+                <div class="room-item" onclick="enterRoom('{{ room.id }}')">
                     <div class="room-info">
                         <div><strong>ID:</strong> {{ room.id }}</div>
-                        <div><strong>创建者:</strong> {{ room.creator }}</div>
-                        <div><strong>选手:</strong> {{ room.players }}</div>
+                        <div><strong>队伍:</strong> {{ room.teams.team1[0] if room.teams.team1 else '空' }} vs {{ room.teams.team2[0] if room.teams.team2 else '空' }}</div>
                         <div><strong>状态:</strong> <span class="{{ 'status-active' if not room.status == '已结束' else 'status-ended' }}">{{ room.status }}</span></div>
                     </div>
-                    {% if room.is_in_room %}
-                        <a href="{{ room.url }}" class="btn-enter">进入房间</a>
-                    {% else %}
-                        <a href="{{ room.url }}" class="btn-enter btn-disabled" onclick="event.preventDefault(); alert('你不在这个房间中');">进入房间</a>
-                    {% endif %}
                 </div>
                 {% endfor %}
             {% else %}
@@ -52,54 +42,155 @@
         </div>
     </div>
 
+    <!-- 创建房间弹窗 -->
+    <div id="create-modal" class="modal">
+        <div class="modal-content">
+            <h3>创建房间</h3>
+            <label for="custom-problems">题目 (逗号分隔):</label>
+            <input type="text" id="custom-problems" value="P1000">
+            <label for="team1-name">队伍1名称:</label>
+            <input type="text" id="team1-name" value="Team1">
+            <label for="team2-name">队伍2名称:</label>
+            <input type="text" id="team2-name" value="Team2">
+            <div class="modal-buttons">
+                <button onclick="createRoom()">创建</button>
+                <button onclick="closeCreateModal()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 加入房间弹窗 -->
+    <div id="join-modal" class="modal">
+        <div class="modal-content">
+            <h3>加入房间</h3>
+            <p>房间号: <span id="join-room-id-display"></span></p>
+            <label for="join-team-select">选择队伍:</label>
+            <select id="join-team-select">
+                <option value="">-- 选择队伍 --</option>
+                <option value="Team1">Team1</option>
+                <option value="Team2">Team2</option>
+            </select>
+            <div class="modal-buttons">
+                <button onclick="joinRoom()">加入</button>
+                <button onclick="closeJoinModal()">取消</button>
+            </div>
+        </div>
+    </div>
+
     <script>
-        document.getElementById('create-btn').addEventListener('click', function() {
-            const custom_problems = prompt("请输入题目编号 (用逗号分隔, 例如: P1000,P1001):", "P1000");
-            if (!custom_problems) return;
-            const problem_list = custom_problems.split(',').map(p => p.trim()).filter(p => p);
-            if (problem_list.length === 0) problem_list.push("P1000"); // Fallback
+        // --- Modal Functions ---
+        function openCreateModal() {
+            document.getElementById('create-modal').style.display = 'block';
+        }
+
+        function closeCreateModal() {
+            document.getElementById('create-modal').style.display = 'none';
+        }
+
+        function openJoinModal(roomId) {
+            document.getElementById('join-room-id-display').textContent = roomId;
+            document.getElementById('join-team-select').value = '';
+            document.getElementById('join-modal').style.display = 'block';
+        }
+
+        function closeJoinModal() {
+            document.getElementById('join-modal').style.display = 'none';
+        }
+
+        // --- Event Listeners ---
+        document.getElementById('create-btn').addEventListener('click', openCreateModal);
+
+        document.getElementById('join-btn').addEventListener('click', function() {
+            const roomId = document.getElementById('join-id').value.trim();
+            if (roomId) {
+                openJoinModal(roomId);
+            } else {
+                alert("请输入房间号");
+            }
+        });
+
+        // --- Functions ---
+        function enterRoom(roomId) {
+            // 跳转到房间页面，用户在房间页面选择队伍
+            window.location.href = `/room/${roomId}`;
+        }
+
+        function createRoom() {
+            const customProblems = document.getElementById('custom-problems').value.trim();
+            const team1Name = document.getElementById('team1-name').value.trim();
+            const team2Name = document.getElementById('team2-name').value.trim();
+
+            if (!team1Name || !team2Name) {
+                alert("请输入队伍名称");
+                return;
+            }
+            if (team1Name === team2Name) {
+                alert("队伍名称不能相同");
+                return;
+            }
+
+            const problemList = customProblems ? customProblems.split(',').map(p => p.trim()).filter(p => p) : ["P1000"];
 
             fetch('/api/create', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({problems: problem_list})
+                body: JSON.stringify({
+                    problems: problemList,
+                    team1_name: team1Name,
+                    team2_name: team2Name
+                })
             })
             .then(response => response.json())
             .then(data => {
                 if(data.room_id) {
-                    alert(`房间创建成功！ID: ${data.room_id}\n链接: ${data.url}`);
+                    alert(`房间创建成功！ID: ${data.room_id}`);
                     location.reload();
                 } else {
                     alert('创建失败: ' + (data.error || '未知错误'));
                 }
             })
             .catch(error => console.error('Error:', error));
-        });
+            closeCreateModal();
+        }
 
-        document.getElementById('join-btn').addEventListener('click', function() {
-            const room_id = document.getElementById('join-id').value.trim();
-            const team = document.getElementById('join-team').value;
-            if (!room_id) {
-                alert('请输入房间号');
+        function joinRoom() {
+            const roomId = document.getElementById('join-room-id-display').textContent;
+            const team = document.getElementById('join-team-select').value;
+
+            if (!team) {
+                alert("请选择队伍");
                 return;
             }
 
             fetch('/api/join', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({room_id: room_id, team: team})
+                body: JSON.stringify({room_id: roomId, team: team})
             })
             .then(response => response.json())
             .then(data => {
                 if(data.ok) {
                     alert('加入成功！');
-                    location.href = `/room/${room_id}`;
+                    window.location.href = `/room/${roomId}`;
                 } else {
                     alert('加入失败: ' + (data.error || '未知错误'));
                 }
             })
             .catch(error => console.error('Error:', error));
-        });
+            closeJoinModal();
+        }
+
+        // 点击弹窗外部关闭
+        window.onclick = function(event) {
+            const createModal = document.getElementById('create-modal');
+            const joinModal = document.getElementById('join-modal');
+            if (event.target === createModal) {
+                closeCreateModal();
+            }
+            if (event.target === joinModal) {
+                closeJoinModal();
+            }
+        }
     </script>
 </body>
 </html>

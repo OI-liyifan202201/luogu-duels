@@ -25,15 +25,15 @@ users = {}  # user_id -> {luogu_name, avatar}
 rooms = {}  # room_id -> Room object
 
 class Room:
-    def __init__(self, room_id):
+    def __init__(self, room_id, team1_name="Team1", team2_name="Team2"):
         self.room_id = room_id
-        self.problems = set(["P1000"])
-        self.teams = {"team1": [], "team2": []}
+        # 使用动态队伍名作为字典键
+        self.teams = {team1_name: [], team2_name: []}
         self.members = set()
-        # 修改：初始化分数为 0
-        self.scores = {"team1": 0, "team2": 0}
+        # 分数也使用动态队伍名作为键
+        self.scores = {team1_name: 0, team2_name: 0}
+        self.problems = set(["P1000"])
         self.solved = set()
-        # 新增：记录题目由谁解出
         self.solved_by = {} # {pid: {"user": username, "team": team_name}}
         self.finished = False
         self.winner = None
@@ -41,14 +41,19 @@ class Room:
         self.proposals = []
         self.deletion_proposals = []
 
-    def add_member(self, team, luogu_name):
-        if team not in ["team1", "team2"]:
+    def add_member(self, team_name, luogu_name):
+        # 检查队伍是否存在
+        if team_name not in self.teams:
             return False
+        # 检查用户是否已在房间内
         if luogu_name in self.members:
             return False
-        self.teams[team].append(luogu_name)
+        # 添加成员
+        self.teams[team_name].append(luogu_name)
         self.members.add(luogu_name)
-        # 无需再次初始化分数，已在 __init__ 中设置
+        # 初始化分数（如果队伍分数不存在，通常不会发生）
+        if team_name not in self.scores:
+            self.scores[team_name] = 0
         return True
 
     def remove_member(self, luogu_name):
@@ -65,7 +70,6 @@ class Room:
             "problems": list(self.problems),
             "teams": {k: v[:] for k, v in self.teams.items()},
             "solved": list(self.solved),
-            # 修改：发送 solved_by 信息
             "solved_by": self.solved_by.copy(),
             "scores": self.scores.copy(),
             "finished": self.finished,
@@ -124,50 +128,45 @@ def judge_room(room_id):
     room = rooms[room_id]
     print(f"[DEBUG] Judge loop started for room {room_id}")
     while not room.finished:
-        ac_results = {} # 收集本次检查的所有 AC 结果
+        ac_results = {}
         for pid in list(room.problems):
             if pid in room.solved:
-                continue # 跳过已解题目
+                continue
 
             ac_users_for_pid = fetch_ac_users_for_room(pid, room.members)
-            # ac_users_for_pid is {pid: {user1, user2, ...}}
             if pid in ac_users_for_pid:
                 ac_results[pid] = ac_users_for_pid[pid]
 
-        # 遍历收集到的 AC 结果
         for pid, ac_users in ac_results.items():
-            if pid in room.solved: # 再次检查，防止并发问题
+            if pid in room.solved:
                 continue
 
             solved_by_team = None
-            for team_name in ["team1", "team2"]:
+            # 遍历动态队伍名
+            for team_name in room.teams.keys():
                 if any(user in ac_users for user in room.teams[team_name]):
                     solved_by_team = team_name
                     break
 
             if not solved_by_team:
-                continue # AC 的用户不在房间内队伍里
+                continue
 
-            # 标记题目为已解，记录解题者
             room.solved.add(pid)
-            # 找到具体是哪个用户解的题 (从 AC 用户中找到属于该队伍的)
             solving_user = next(user for user in ac_users if user in room.teams[solved_by_team])
             room.solved_by[pid] = {"user": solving_user, "team": solved_by_team}
-            # 更新分数
-            room.scores[solved_by_team] += 100 # 假设每题100分
+            room.scores[solved_by_team] += 100
             print(f"[DEBUG] Room {room_id}: {solved_by_team} ({solving_user}) solved {pid}")
 
-            # 修改：检查新的胜利条件 - 分数严格超过一半
+            # 修改：检查新的胜利条件
             total_points = len(room.problems) * 100
-            win_points = total_points // 2 # 例如 3题共300分，win_points = 150
-            if room.scores[solved_by_team] > win_points: # 严格大于
+            win_points = total_points // 2
+            if room.scores[solved_by_team] > win_points:
                 room.winner = solved_by_team
                 room.finished = True
                 print(f"[DEBUG] Room {room_id} FINISHED! Winner: {solved_by_team} (Score: {room.scores[solved_by_team]} > {win_points})")
                 socketio.emit("game_over", {"winner": solved_by_team}, room=room_id)
-                break # 退出 for 循环
+                break
 
-            # 发送更新
             socketio.emit("update", room.get_status(), room=room_id)
 
         if not room.finished:
@@ -306,16 +305,21 @@ def accept_proposal():
         return jsonify({"error": "提案未找到或非待处理状态"}), 404
 
     proposer_team = proposal_to_accept["proposer"]
-    accepter_team = "team1" if proposer_team == "team2" else "team2"
+    # 根据发起队伍找到对方队伍
+    teams_list = list(room.teams.keys())
+    if proposer_team not in teams_list:
+        return jsonify({"error": "内部错误：提案队伍无效"}), 500
+    accepter_team = teams_list[1] if teams_list[0] == proposer_team else teams_list[0]
+
     if user["luogu_name"] not in room.teams.get(accepter_team, []):
         return jsonify({"error": "你不在有权限同意的队伍中"}), 403
 
-    # Accept the proposal
     proposal_to_accept["status"] = "accepted"
     room.problems.add(pid)
 
     socketio.emit("update", room.get_status(), room=room_id)
     return jsonify({"ok": True})
+
 
 @app.route("/api/accept_delete", methods=["POST"])
 def accept_delete():
@@ -341,22 +345,24 @@ def accept_delete():
         return jsonify({"error": "删除提案未找到或非待处理状态"}), 404
 
     proposer_team = proposal_to_accept["proposer"]
-    accepter_team = "team1" if proposer_team == "team2" else "team2"
+    teams_list = list(room.teams.keys())
+    if proposer_team not in teams_list:
+        return jsonify({"error": "内部错误：提案队伍无效"}), 500
+    accepter_team = teams_list[1] if teams_list[0] == proposer_team else teams_list[0]
+
     if user["luogu_name"] not in room.teams.get(accepter_team, []):
         return jsonify({"error": "你不在有权限同意的队伍中"}), 403
 
     proposal_to_accept["status"] = "accepted"
     room.problems.discard(pid)
     room.solved.discard(pid)
-    # Also remove from solved_by if it was solved
     if pid in room.solved_by:
         del room.solved_by[pid]
-    # Adjust score if necessary (e.g., if a solved problem is deleted, subtract points)
-    # For simplicity, we won't subtract points here, as it complicates score tracking.
-    # The game state might become inconsistent if scores are adjusted retroactively.
 
     socketio.emit("update", room.get_status(), room=room_id)
     return jsonify({"ok": True})
+
+
 
 # --- SocketIO Events ---
 @socketio.on("join_room")
@@ -493,11 +499,20 @@ def create_room():
 
     data = request.json
     custom_problems = data.get("problems", ["P1000"])
+    # 获取自定义队伍名
+    team1_name = data.get("team1_name", "Team1")
+    team2_name = data.get("team2_name", "Team2")
+
+    # 确保队伍名不相同
+    if team1_name == team2_name:
+        return jsonify({"error": "队伍名不能相同"}), 400
 
     room_id = str(uuid.uuid4())[:8]
-    room = Room(room_id)
+    # 创建房间时传入自定义队伍名
+    room = Room(room_id, team1_name, team2_name)
     room.problems = set(custom_problems)
-    room.add_member("team1", user["luogu_name"])
+    # 创建者默认加入 team1_name 队伍
+    room.add_member(team1_name, user["luogu_name"])
 
     rooms[room_id] = room
     threading.Thread(target=judge_room, args=(room_id,), daemon=True).start()
@@ -511,23 +526,23 @@ def join_room_api():
 
     data = request.json
     room_id = data.get("room_id")
+    # 获取用户选择的队伍名
     team = data.get("team")
 
-    if not room_id or team not in ["team1", "team2"]:
+    if not room_id or not team:
         return jsonify({"error": "房间或队伍无效"}), 400
 
     if room_id not in rooms:
         return jsonify({"error": "房间不存在"}), 404
 
     room = rooms[room_id]
-    if user["luogu_name"] in room.members:
-        return jsonify({"error": "你已在此房间中"}), 400
-
+    # 用户加入指定队伍
     if room.add_member(team, user["luogu_name"]):
         socketio.emit("update", room.get_status(), room=room_id)
         return jsonify({"ok": True})
     else:
-        return jsonify({"error": "无法加入队伍"}), 400
+        # 可能队伍不存在或用户已在房间
+        return jsonify({"error": "无法加入队伍，可能队伍不存在或你已在此房间中"}), 400
 
 @app.route("/api/propose", methods=["POST"])
 def propose_problem():
@@ -589,11 +604,14 @@ def reject_proposal():
         return jsonify({"error": "提案未找到或非待处理状态"}), 404
 
     proposer_team = proposal_to_reject["proposer"]
-    rejecter_team = "team1" if proposer_team == "team2" else "team2"
+    teams_list = list(room.teams.keys())
+    if proposer_team not in teams_list:
+        return jsonify({"error": "内部错误：提案队伍无效"}), 500
+    rejecter_team = teams_list[1] if teams_list[0] == proposer_team else teams_list[0]
+
     if user["luogu_name"] not in room.teams.get(rejecter_team, []):
         return jsonify({"error": "你不在有权限拒绝的队伍中"}), 403
 
-    # Reject the proposal
     proposal_to_reject["status"] = "rejected"
 
     socketio.emit("update", room.get_status(), room=room_id)
@@ -623,7 +641,11 @@ def reject_delete():
         return jsonify({"error": "删除提案未找到或非待处理状态"}), 404
 
     proposer_team = proposal_to_reject["proposer"]
-    rejecter_team = "team1" if proposer_team == "team2" else "team2"
+    teams_list = list(room.teams.keys())
+    if proposer_team not in teams_list:
+        return jsonify({"error": "内部错误：提案队伍无效"}), 500
+    rejecter_team = teams_list[1] if teams_list[0] == proposer_team else teams_list[0]
+
     if user["luogu_name"] not in room.teams.get(rejecter_team, []):
         return jsonify({"error": "你不在有权限拒绝的队伍中"}), 403
 
@@ -631,6 +653,7 @@ def reject_delete():
 
     socketio.emit("update", room.get_status(), room=room_id)
     return jsonify({"ok": True})
+
 
 # ----------------------------
 # Main

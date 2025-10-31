@@ -21,12 +21,12 @@
                 <h3>比分与状态</h3>
                 <div id="score-display">
                     <div class="team-score team1">
-                        <span>蓝队 (Team1): </span>
-                        <span id="score1">{{ room.scores.team1 }}</span>
+                        <span id="team1-name">{{ room.teams.keys() | list | first }}: </span>
+                        <span id="score1">{{ room.scores[room.teams.keys() | list | first] }}</span>
                     </div>
                     <div class="team-score team2">
-                        <span>红队 (Team2): </span>
-                        <span id="score2">{{ room.scores.team2 }}</span>
+                        <span id="team2-name">{{ room.teams.keys() | list | last }}: </span>
+                        <span id="score2">{{ room.scores[room.teams.keys() | list | last] }}</span>
                     </div>
                 </div>
                 <div id="problems-status">
@@ -37,7 +37,7 @@
                         <li class="{% if pid in room.solved %}solved{% else %}unsolved{% endif %}">
                             {{ pid }}
                             {% if solved_info %}
-                            <span class="solved-by {{ 'team1' if solved_info.team == 'team1' else 'team2' }}"> ({{ solved_info.user }})</span>
+                            <span class="solved-by {{ 'team1' if solved_info.team == (room.teams.keys() | list | first) else 'team2' }}"> ({{ solved_info.user }})</span>
                             {% endif %}
                         </li>
                         {% endfor %}
@@ -45,7 +45,7 @@
                 </div>
                 {% if room.finished %}
                 <div id="winner-display">
-                    <h3>🏆 胜者: <span id="winner-name" class="{{ 'team1' if room.winner == 'team1' else 'team2' }}">{{ room.winner or '未知' }}</span></h3>
+                    <h3>🏆 胜者: <span id="winner-name" class="{{ 'team1' if room.winner == (room.teams.keys() | list | first) else 'team2' }}">{{ room.winner or '未知队伍' }}</span></h3>
                 </div>
                 {% endif %}
             </div>
@@ -55,12 +55,12 @@
                 <div id="team-members">
                     <h4>队伍成员</h4>
                     <div class="team-members team1">
-                        <strong>蓝队:</strong>
-                        <span id="team1-members">{% for member in room.teams.team1 %}{{ member }}{% if not loop.last %}, {% endif %}{% endfor %}</span>
+                        <span id="team1-label">{{ room.teams.keys() | list | first }}:</span>
+                        <span id="team1-members">{% for member in room.teams[room.teams.keys() | list | first] %}{{ member }}{% if not loop.last %}, {% endif %}{% endfor %}</span>
                     </div>
                     <div class="team-members team2">
-                        <strong>红队:</strong>
-                        <span id="team2-members">{% for member in room.teams.team2 %}{{ member }}{% if not loop.last %}, {% endif %}{% endfor %}</span>
+                        <span id="team2-label">{{ room.teams.keys() | list | last }}:</span>
+                        <span id="team2-members">{% for member in room.teams[room.teams.keys() | list | last] %}{{ member }}{% if not loop.last %}, {% endif %}{% endfor %}</span>
                     </div>
                 </div>
                 <div id="proposals-log">
@@ -109,53 +109,90 @@
         <div class="win-message">🎉 {{ room.winner or '未知队伍' }} 获胜！</div>
     </div>
 
+    <!-- 选择队伍弹窗 -->
+    <div id="team-select-modal" class="modal">
+        <div class="modal-content">
+            <h3>选择队伍</h3>
+            <p>房间: {{ room.room_id }}</p>
+            <label for="team-select">加入队伍:</label>
+            <select id="team-select">
+                <option value="">-- 选择队伍 --</option>
+                <!-- 选项将通过 JS 动态填充 -->
+            </select>
+            <div class="modal-buttons">
+                <button onclick="joinTeam()">加入</button>
+                <button onclick="cancelJoin()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 确认弹窗 -->
+    <div id="confirm-modal" class="modal">
+        <div class="modal-content">
+            <h3 id="confirm-title">确认</h3>
+            <p id="confirm-message"></p>
+            <div class="modal-buttons">
+                <button id="confirm-yes-btn">是</button>
+                <button id="confirm-no-btn">否</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const socket = io();
         const roomId = "{{ room.room_id }}";
-        let myTeam = null;
+        let myTeam = null; // Will be set after joining a team
         let currentLuoguName = "{{ current_user.luogu_name }}";
         let roomTeams = {{ room.teams | tojson }};
+        let availableTeams = Object.keys(roomTeams);
 
+        // Check if user is already in a team
         for (const [team, members] of Object.entries(roomTeams)) {
             if (members.includes(currentLuoguName)) {
                 myTeam = team;
                 break;
             }
         }
-        if (!myTeam) {
-            alert("错误：你不在房间的队伍中！");
-            location.href = "/";
-        }
 
-        socket.emit("join_room", {room_id: roomId, team: myTeam});
+        // If not in a team, show the team selection modal
+        if (!myTeam) {
+            openTeamSelectModal();
+        } else {
+            // If already in a team, join the SocketIO rooms
+            socket.emit("join_room", {room_id: roomId, team: myTeam});
+        }
 
         if (Notification.permission !== 'denied' && Notification.permission !== 'granted') {
             Notification.requestPermission();
         }
 
         socket.on("update", (data) => {
-            document.getElementById("score1").innerText = data.scores.team1;
-            document.getElementById("score2").innerText = data.scores.team2;
+            // Update team names dynamically
+            document.getElementById("team1-name").textContent = availableTeams[0] + ": ";
+            document.getElementById("team2-name").textContent = availableTeams[1] + ": ";
+            document.getElementById("team1-label").textContent = availableTeams[0] + ":";
+            document.getElementById("team2-label").textContent = availableTeams[1] + ":";
 
-            // Update problem list with solvers
+            document.getElementById("score1").innerText = data.scores[availableTeams[0]];
+            document.getElementById("score2").innerText = data.scores[availableTeams[1]];
+
             const problemList = document.getElementById("problem-list");
             problemList.innerHTML = "";
             data.problems.forEach(pid => {
                 const li = document.createElement("li");
                 li.textContent = pid;
                 li.className = data.solved.includes(pid) ? "solved" : "unsolved";
-                // Add solver info
                 if (data.solved_by[pid]) {
                     const solverSpan = document.createElement("span");
-                    solverSpan.className = `solved-by ${data.solved_by[pid].team === 'team1' ? 'team1' : 'team2'}`;
+                    solverSpan.className = `solved-by ${data.solved_by[pid].team === availableTeams[0] ? 'team1' : 'team2'}`;
                     solverSpan.textContent = ` (${data.solved_by[pid].user})`;
                     li.appendChild(solverSpan);
                 }
                 problemList.appendChild(li);
             });
 
-            document.getElementById("team1-members").innerText = data.teams.team1.join(", ");
-            document.getElementById("team2-members").innerText = data.teams.team2.join(", ");
+            document.getElementById("team1-members").innerText = data.teams[availableTeams[0]].join(", ");
+            document.getElementById("team2-members").innerText = data.teams[availableTeams[1]].join(", ");
 
             const proposalsList = document.getElementById("proposals-list");
             proposalsList.innerHTML = "";
@@ -165,12 +202,12 @@
                 if (prop.status === "pending") {
                     const acceptBtn = document.createElement("button");
                     acceptBtn.textContent = "同意";
-                    acceptBtn.onclick = () => acceptProposal(prop.pid);
-                    const rejectBtn = document.createElement("button"); // 新增拒绝按钮
+                    acceptBtn.onclick = () => showConfirm(`确定要同意添加题目 ${prop.pid} 吗？`, () => acceptProposal(prop.pid));
+                    const rejectBtn = document.createElement("button");
                     rejectBtn.textContent = "拒绝";
-                    rejectBtn.onclick = () => rejectProposal(prop.pid); // 新增拒绝函数
+                    rejectBtn.onclick = () => showConfirm(`确定要拒绝添加题目 ${prop.pid} 吗？`, () => rejectProposal(prop.pid));
                     li.appendChild(acceptBtn);
-                    li.appendChild(rejectBtn); // 添加拒绝按钮
+                    li.appendChild(rejectBtn);
                 }
                 proposalsList.appendChild(li);
             });
@@ -183,12 +220,12 @@
                 if (prop.status === "pending") {
                     const acceptBtn = document.createElement("button");
                     acceptBtn.textContent = "同意";
-                    acceptBtn.onclick = () => acceptDeletion(prop.pid);
-                    const rejectBtn = document.createElement("button"); // 新增拒绝按钮
+                    acceptBtn.onclick = () => showConfirm(`确定要同意删除题目 ${prop.pid} 吗？`, () => acceptDeletion(prop.pid));
+                    const rejectBtn = document.createElement("button");
                     rejectBtn.textContent = "拒绝";
-                    rejectBtn.onclick = () => rejectDeletion(prop.pid); // 新增拒绝函数
+                    rejectBtn.onclick = () => showConfirm(`确定要拒绝删除题目 ${prop.pid} 吗？`, () => rejectDeletion(prop.pid));
                     li.appendChild(acceptBtn);
-                    li.appendChild(rejectBtn); // 添加拒绝按钮
+                    li.appendChild(rejectBtn);
                 }
                 delProposalsList.appendChild(li);
             });
@@ -196,7 +233,7 @@
             if (data.finished && !document.getElementById("winner-display")) {
                 const winnerDiv = document.createElement("div");
                 winnerDiv.id = "winner-display";
-                winnerDiv.innerHTML = `<h3>🏆 胜者: <span id="winner-name" class="${data.winner === 'team1' ? 'team1' : 'team2'}">${data.winner}</span></h3>`;
+                winnerDiv.innerHTML = `<h3>🏆 胜者: <span id="winner-name" class="${data.winner === availableTeams[0] ? 'team1' : 'team2'}">${data.winner}</span></h3>`;
                 document.getElementById("status").appendChild(winnerDiv);
                 document.getElementById("winner-animation").style.display = "flex";
             }
@@ -205,7 +242,7 @@
         socket.on("game_over", (data) => {
             document.getElementById("winner-animation").style.display = "flex";
             document.getElementById("winner-name").textContent = data.winner;
-            document.getElementById("winner-name").className = data.winner === 'team1' ? 'team1' : 'team2';
+            document.getElementById("winner-name").className = data.winner === availableTeams[0] ? 'team1' : 'team2';
         });
 
         socket.on("proposal_request", (data) => {
@@ -240,6 +277,83 @@
             }
         });
 
+        // --- Modal Functions ---
+        function openTeamSelectModal() {
+            const select = document.getElementById('team-select');
+            select.innerHTML = '<option value="">-- 选择队伍 --</option>'; // Clear options
+            availableTeams.forEach(teamName => {
+                const option = document.createElement('option');
+                option.value = teamName;
+                // Show team name and remaining slots (optional)
+                const slots = 4 - roomTeams[teamName].length; // Assuming max 4 per team
+                option.textContent = `${teamName} (${slots} 个空位)`;
+                select.appendChild(option);
+            });
+            document.getElementById('team-select-modal').style.display = 'block';
+        }
+
+        function closeTeamSelectModal() {
+            document.getElementById('team-select-modal').style.display = 'none';
+        }
+
+        function openConfirmModal(title, message, onYes) {
+            document.getElementById('confirm-title').textContent = title;
+            document.getElementById('confirm-message').textContent = message;
+            document.getElementById('confirm-yes-btn').onclick = () => {
+                onYes();
+                closeConfirmModal();
+            };
+            document.getElementById('confirm-no-btn').onclick = closeConfirmModal;
+            document.getElementById('confirm-modal').style.display = 'block';
+        }
+
+        function closeConfirmModal() {
+            document.getElementById('confirm-modal').style.display = 'none';
+        }
+
+        function showConfirm(message, onYes) {
+            openConfirmModal("确认", message, onYes);
+        }
+
+        // --- Functions ---
+        function joinTeam() {
+            const selectedTeam = document.getElementById('team-select').value;
+            if (!selectedTeam) {
+                alert("请选择一个队伍");
+                return;
+            }
+
+            fetch('/api/join', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({room_id: roomId, team: selectedTeam})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if(data.ok) {
+                    myTeam = selectedTeam; // Set myTeam after successful join
+                    socket.emit("join_room", {room_id: roomId, team: myTeam}); // Join SocketIO room
+                    closeTeamSelectModal();
+                    alert("加入成功！");
+                } else {
+                    alert('加入失败: ' + (data.error || '未知错误'));
+                }
+            })
+            .catch(error => {
+                console.error('Join error:', error);
+                alert("加入失败: 网络错误或服务器异常");
+            });
+        }
+
+        function cancelJoin() {
+            // If user cancels joining, redirect back to index
+            if (!myTeam) {
+                window.location.href = '/';
+            } else {
+                closeTeamSelectModal();
+            }
+        }
+
         function sendChat() {
             const input = document.getElementById("msg-input");
             const text = input.value.trim();
@@ -254,7 +368,6 @@
             input.value = "";
         }
 
-        // --- Send commands as chat messages ---
         function sendProposeMessage() {
             const pidInput = document.getElementById("new-pid-input");
             const pid = pidInput.value.trim();
@@ -287,11 +400,8 @@
             pidInput.value = "";
         }
 
-        // --- API calls for accepting ---
+        // --- API calls with confirm ---
         function acceptProposal(pid) {
-            if (!confirm(`确定要同意添加题目 ${pid} 吗？`)) {
-                return;
-            }
             fetch("/api/accept_proposal", {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
@@ -315,9 +425,6 @@
         }
 
         function acceptDeletion(pid) {
-             if (!confirm(`确定要同意删除题目 ${pid} 吗？`)) {
-                return;
-            }
             fetch("/api/accept_delete", {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
@@ -340,11 +447,7 @@
             });
         }
 
-        // --- New API calls for rejecting ---
         function rejectProposal(pid) {
-            if (!confirm(`确定要拒绝添加题目 ${pid} 吗？`)) {
-                return;
-            }
             fetch("/api/reject_proposal", {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
@@ -368,9 +471,6 @@
         }
 
         function rejectDeletion(pid) {
-             if (!confirm(`确定要拒绝删除题目 ${pid} 吗？`)) {
-                return;
-            }
             fetch("/api/reject_delete", {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
@@ -394,29 +494,27 @@
         }
 
         function leaveRoom() {
-            if (!confirm("确定要离开房间吗？")) {
-                return;
-            }
-
-            fetch("/api/leave", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({
-                    room_id: roomId
+            showConfirm("确定要离开房间吗？", function() {
+                fetch("/api/leave", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({
+                        room_id: roomId
+                    })
                 })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if(data.ok) {
-                    alert("已离开房间");
-                    location.href = "/";
-                } else {
-                    alert("离开失败: " + (data.error || "未知错误"));
-                }
-            })
-            .catch(error => {
-                console.error("Leave error:", error);
-                alert("离开失败: 网络错误或服务器异常");
+                .then(response => response.json())
+                .then(data => {
+                    if(data.ok) {
+                        alert("已离开房间");
+                        window.location.href = "/";
+                    } else {
+                        alert("离开失败: " + (data.error || "未知错误"));
+                    }
+                })
+                .catch(error => {
+                    console.error("Leave error:", error);
+                    alert("离开失败: 网络错误或服务器异常");
+                });
             });
         }
 
@@ -437,6 +535,18 @@
                 sendDeleteMessage();
             }
         });
+
+        // Click outside modals to close them
+        window.onclick = function(event) {
+            const teamSelectModal = document.getElementById('team-select-modal');
+            const confirmModal = document.getElementById('confirm-modal');
+            if (event.target === teamSelectModal) {
+                cancelJoin(); // Use cancelJoin logic
+            }
+            if (event.target === confirmModal) {
+                closeConfirmModal();
+            }
+        }
     </script>
 </body>
 </html>
