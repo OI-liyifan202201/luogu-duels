@@ -87,7 +87,7 @@ def fetch_ac_users_for_room(pid: str, room_members: set):
             ])
 
             page = context.new_page()
-            page.goto(url, wait_until="domcontentloaded", timeout=7000)
+            page.goto(url, wait_until="domcontentloaded", timeout=30000)
             page.wait_for_timeout(1000)
 
             # 修改：返回一个字典，key 是 pid，value 是 AC 的用户集合
