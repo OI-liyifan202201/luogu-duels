@@ -190,17 +190,31 @@ def index():
 
     room_list = []
     for rid, room in rooms.items():
-        # Check if user is in this room
+        # --- 修复点：获取动态队伍名 ---
+        teams_list = list(room.teams.keys()) # 获取当前房间的两个队伍名
+        if len(teams_list) >= 2: # 确保有两个队伍
+            team1_name = teams_list[0]
+            team2_name = teams_list[1]
+            players_info = f"{team1_name}: {len(room.teams[team1_name])} | {team2_name}: {len(room.teams[team2_name])}"
+        else:
+            # 如果队伍数量异常，显示未知
+            players_info = "未知队伍"
+        # --- 修复点结束 ---
+
         is_in_room = user["luogu_name"] in room.members
         room_list.append({
             "id": rid,
-            "creator": room.teams.get("team1", [None])[0] or "未知",
-            "players": f"Team1: {len(room.teams['team1'])} | Team2: {len(room.teams['team2'])}",
+            "teams": { # 传递队伍名给前端，方便显示
+                "team1": team1_name,
+                "team2": team2_name
+            },
+            "players": players_info,
             "status": "进行中" if not room.finished else "已结束",
             "url": url_for("room_page", room_id=rid),
             "is_in_room": is_in_room
         })
     return render_template("index.html", rooms=room_list, current_user=user)
+
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
