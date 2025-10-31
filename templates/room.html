@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>房间 {{ room.room_id }} - Luogu Duels</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body>
+    <div class="header">
+        <h1>⚔️ 房间 {{ room.room_id }}</h1>
+        <div class="user-info">
+            <span>你好, {{ current_user.luogu_name }}!</span>
+            <a href="{{ url_for('logout') }}">注销</a>
+        </div>
+    </div>
+
+    <div class="layout">
+        <div class="left-panel">
+            <div id="status" class="card">
+                <h3>比分与状态</h3>
+                <div id="score-display">
+                    <div class="team-score team1">
+                        <span>蓝队 (Team1): </span>
+                        <span id="score1">{{ room.scores.team1 }}</span>
+                    </div>
+                    <div class="team-score team2">
+                        <span>红队 (Team2): </span>
+                        <span id="score2">{{ room.scores.team2 }}</span>
+                    </div>
+                </div>
+                <div id="problems-status">
+                    <h4>题目状态</h4>
+                    <ul id="problem-list">
+                        {% for pid in room.problems %}
+                        {% set solved_info = room.solved_by.get(pid) %}
+                        <li class="{% if pid in room.solved %}solved{% else %}unsolved{% endif %}">
+                            {{ pid }}
+                            {% if solved_info %}
+                            <span class="solved-by {{ 'team1' if solved_info.team == 'team1' else 'team2' }}"> ({{ solved_info.user }})</span>
+                            {% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% if room.finished %}
+                <div id="winner-display">
+                    <h3>🏆 胜者: <span id="winner-name" class="{{ 'team1' if room.winner == 'team1' else 'team2' }}">{{ room.winner or '未知' }}</span></h3>
+                </div>
+                {% endif %}
+            </div>
+
+            <div id="global-info" class="card">
+                <h3>全局信息</h3>
+                <div id="team-members">
+                    <h4>队伍成员</h4>
+                    <div class="team-members team1">
+                        <strong>蓝队:</strong>
+                        <span id="team1-members">{% for member in room.teams.team1 %}{{ member }}{% if not loop.last %}, {% endif %}{% endfor %}</span>
+                    </div>
+                    <div class="team-members team2">
+                        <strong>红队:</strong>
+                        <span id="team2-members">{% for member in room.teams.team2 %}{{ member }}{% if not loop.last %}, {% endif %}{% endfor %}</span>
+                    </div>
+                </div>
+                <div id="proposals-log">
+                    <h4>申请记录</h4>
+                    <ul id="proposals-list">
+                        <!-- Proposals will be added here dynamically -->
+                    </ul>
+                </div>
+                <div id="deletion-proposals-log">
+                    <h4>删除申请</h4>
+                    <ul id="deletion-proposals-list">
+                        <!-- Deletion proposals will be added here dynamically -->
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>房间操作</h3>
+                <div>
+                    <input type="text" id="new-pid-input" placeholder="题目编号，如 P1234">
+                    <button onclick="sendProposeMessage()">申请添加</button>
+                </div>
+                <div style="margin-top: 10px;">
+                    <input type="text" id="delete-pid-input" placeholder="题目编号，如 P1234">
+                    <button onclick="sendDeleteMessage()">申请删除</button>
+                </div>
+                <div style="margin-top: 10px;">
+                    <button onclick="leaveRoom()">离开房间</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="right-panel">
+            <div id="chat-box" class="card">
+                <h3>队内聊天</h3>
+                <div id="messages"></div>
+                <div class="chat-input">
+                    <input type="text" id="msg-input" placeholder="输入消息...">
+                    <button onclick="sendChat()">发送</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="winner-animation" style="display:none;">
+        <div class="win-message">🎉 {{ room.winner or '未知队伍' }} 获胜！</div>
+    </div>
+
+    <script>
+        const socket = io();
+        const roomId = "{{ room.room_id }}";
+        let myTeam = null;
+        let currentLuoguName = "{{ current_user.luogu_name }}";
+        let roomTeams = {{ room.teams | tojson }};
+
+        for (const [team, members] of Object.entries(roomTeams)) {
+            if (members.includes(currentLuoguName)) {
+                myTeam = team;
+                break;
+            }
+        }
+        if (!myTeam) {
+            alert("错误：你不在房间的队伍中！");
+            location.href = "/";
+        }
+
+        socket.emit("join_room", {room_id: roomId, team: myTeam});
+
+        if (Notification.permission !== 'denied' && Notification.permission !== 'granted') {
+            Notification.requestPermission();
+        }
+
+        socket.on("update", (data) => {
+            document.getElementById("score1").innerText = data.scores.team1;
+            document.getElementById("score2").innerText = data.scores.team2;
+
+            // Update problem list with solvers
+            const problemList = document.getElementById("problem-list");
+            problemList.innerHTML = "";
+            data.problems.forEach(pid => {
+                const li = document.createElement("li");
+                li.textContent = pid;
+                li.className = data.solved.includes(pid) ? "solved" : "unsolved";
+                // Add solver info
+                if (data.solved_by[pid]) {
+                    const solverSpan = document.createElement("span");
+                    solverSpan.className = `solved-by ${data.solved_by[pid].team === 'team1' ? 'team1' : 'team2'}`;
+                    solverSpan.textContent = ` (${data.solved_by[pid].user})`;
+                    li.appendChild(solverSpan);
+                }
+                problemList.appendChild(li);
+            });
+
+            document.getElementById("team1-members").innerText = data.teams.team1.join(", ");
+            document.getElementById("team2-members").innerText = data.teams.team2.join(", ");
+
+            const proposalsList = document.getElementById("proposals-list");
+            proposalsList.innerHTML = "";
+            data.proposals.forEach(prop => {
+                const li = document.createElement("li");
+                li.textContent = `[${prop.timestamp}] ${prop.proposer} 申请添加: ${prop.pid} (${prop.status})`;
+                if (prop.status === "pending") {
+                    const acceptBtn = document.createElement("button");
+                    acceptBtn.textContent = "同意";
+                    acceptBtn.onclick = () => acceptProposal(prop.pid);
+                    const rejectBtn = document.createElement("button"); // 新增拒绝按钮
+                    rejectBtn.textContent = "拒绝";
+                    rejectBtn.onclick = () => rejectProposal(prop.pid); // 新增拒绝函数
+                    li.appendChild(acceptBtn);
+                    li.appendChild(rejectBtn); // 添加拒绝按钮
+                }
+                proposalsList.appendChild(li);
+            });
+
+            const delProposalsList = document.getElementById("deletion-proposals-list");
+            delProposalsList.innerHTML = "";
+            data.deletion_proposals.forEach(prop => {
+                const li = document.createElement("li");
+                li.textContent = `[${prop.timestamp}] ${prop.proposer} 申请删除: ${prop.pid} (${prop.status})`;
+                if (prop.status === "pending") {
+                    const acceptBtn = document.createElement("button");
+                    acceptBtn.textContent = "同意";
+                    acceptBtn.onclick = () => acceptDeletion(prop.pid);
+                    const rejectBtn = document.createElement("button"); // 新增拒绝按钮
+                    rejectBtn.textContent = "拒绝";
+                    rejectBtn.onclick = () => rejectDeletion(prop.pid); // 新增拒绝函数
+                    li.appendChild(acceptBtn);
+                    li.appendChild(rejectBtn); // 添加拒绝按钮
+                }
+                delProposalsList.appendChild(li);
+            });
+
+            if (data.finished && !document.getElementById("winner-display")) {
+                const winnerDiv = document.createElement("div");
+                winnerDiv.id = "winner-display";
+                winnerDiv.innerHTML = `<h3>🏆 胜者: <span id="winner-name" class="${data.winner === 'team1' ? 'team1' : 'team2'}">${data.winner}</span></h3>`;
+                document.getElementById("status").appendChild(winnerDiv);
+                document.getElementById("winner-animation").style.display = "flex";
+            }
+        });
+
+        socket.on("game_over", (data) => {
+            document.getElementById("winner-animation").style.display = "flex";
+            document.getElementById("winner-name").textContent = data.winner;
+            document.getElementById("winner-name").className = data.winner === 'team1' ? 'team1' : 'team2';
+        });
+
+        socket.on("proposal_request", (data) => {
+            if (Notification.permission === "granted") {
+                new Notification(`题目申请`, {
+                    body: `${data.proposer} 申请添加 ${data.pid}`
+                });
+            }
+        });
+
+        socket.on("deletion_request", (data) => {
+            if (Notification.permission === "granted") {
+                new Notification(`题目删除申请`, {
+                    body: `${data.proposer} 申请删除 ${data.pid}`
+                });
+            }
+        });
+
+        socket.on("message", (msg) => {
+            const messagesDiv = document.getElementById("messages");
+            const messageElement = document.createElement("div");
+            messageElement.className = "message";
+            messageElement.innerHTML = `<strong>${msg.user}</strong> <span class="time">(${msg.time})</span>: ${msg.text}`;
+            messagesDiv.appendChild(messageElement);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+            if (Notification.permission === "granted") {
+                new Notification(`来自 ${msg.user}`, {
+                    body: msg.text,
+                    icon: "/static/logo.png"
+                });
+            }
+        });
+
+        function sendChat() {
+            const input = document.getElementById("msg-input");
+            const text = input.value.trim();
+            if (!text) return;
+
+            socket.emit("chat", {
+                room_id: roomId,
+                team: myTeam,
+                user: currentLuoguName,
+                text: text
+            });
+            input.value = "";
+        }
+
+        // --- Send commands as chat messages ---
+        function sendProposeMessage() {
+            const pidInput = document.getElementById("new-pid-input");
+            const pid = pidInput.value.trim();
+            if (!pid) {
+                alert("请输入题目编号");
+                return;
+            }
+            socket.emit("chat", {
+                room_id: roomId,
+                team: myTeam,
+                user: currentLuoguName,
+                text: `!propose ${pid}`
+            });
+            pidInput.value = "";
+        }
+
+        function sendDeleteMessage() {
+            const pidInput = document.getElementById("delete-pid-input");
+            const pid = pidInput.value.trim();
+            if (!pid) {
+                alert("请输入题目编号");
+                return;
+            }
+            socket.emit("chat", {
+                room_id: roomId,
+                team: myTeam,
+                user: currentLuoguName,
+                text: `!delete ${pid}`
+            });
+            pidInput.value = "";
+        }
+
+        // --- API calls for accepting ---
+        function acceptProposal(pid) {
+            if (!confirm(`确定要同意添加题目 ${pid} 吗？`)) {
+                return;
+            }
+            fetch("/api/accept_proposal", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    room_id: roomId,
+                    pid: pid
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if(data.ok) {
+                    console.log("Proposal accepted");
+                } else {
+                    alert("同意失败: " + (data.error || "未知错误"));
+                }
+            })
+            .catch(error => {
+                console.error("Accept Propose error:", error);
+                alert("同意失败: 网络错误或服务器异常");
+            });
+        }
+
+        function acceptDeletion(pid) {
+             if (!confirm(`确定要同意删除题目 ${pid} 吗？`)) {
+                return;
+            }
+            fetch("/api/accept_delete", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    room_id: roomId,
+                    pid: pid
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if(data.ok) {
+                    console.log("Deletion accepted");
+                } else {
+                    alert("同意失败: " + (data.error || "未知错误"));
+                }
+            })
+            .catch(error => {
+                console.error("Accept Delete error:", error);
+                alert("同意失败: 网络错误或服务器异常");
+            });
+        }
+
+        // --- New API calls for rejecting ---
+        function rejectProposal(pid) {
+            if (!confirm(`确定要拒绝添加题目 ${pid} 吗？`)) {
+                return;
+            }
+            fetch("/api/reject_proposal", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    room_id: roomId,
+                    pid: pid
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if(data.ok) {
+                    console.log("Proposal rejected");
+                } else {
+                    alert("拒绝失败: " + (data.error || "未知错误"));
+                }
+            })
+            .catch(error => {
+                console.error("Reject Propose error:", error);
+                alert("拒绝失败: 网络错误或服务器异常");
+            });
+        }
+
+        function rejectDeletion(pid) {
+             if (!confirm(`确定要拒绝删除题目 ${pid} 吗？`)) {
+                return;
+            }
+            fetch("/api/reject_delete", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    room_id: roomId,
+                    pid: pid
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if(data.ok) {
+                    console.log("Deletion rejected");
+                } else {
+                    alert("拒绝失败: " + (data.error || "未知错误"));
+                }
+            })
+            .catch(error => {
+                console.error("Reject Delete error:", error);
+                alert("拒绝失败: 网络错误或服务器异常");
+            });
+        }
+
+        function leaveRoom() {
+            if (!confirm("确定要离开房间吗？")) {
+                return;
+            }
+
+            fetch("/api/leave", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    room_id: roomId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if(data.ok) {
+                    alert("已离开房间");
+                    location.href = "/";
+                } else {
+                    alert("离开失败: " + (data.error || "未知错误"));
+                }
+            })
+            .catch(error => {
+                console.error("Leave error:", error);
+                alert("离开失败: 网络错误或服务器异常");
+            });
+        }
+
+        document.getElementById("msg-input").addEventListener("keypress", function(e) {
+            if (e.key === "Enter") {
+                sendChat();
+            }
+        });
+
+        document.getElementById("new-pid-input").addEventListener("keypress", function(e) {
+            if (e.key === "Enter") {
+                sendProposeMessage();
+            }
+        });
+
+        document.getElementById("delete-pid-input").addEventListener("keypress", function(e) {
+            if (e.key === "Enter") {
+                sendDeleteMessage();
+            }
+        });
+    </script>
+</body>
+</html>

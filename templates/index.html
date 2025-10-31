@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Luogu Duels - 房间列表</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body>
+    <div class="header">
+        <h1>⚔️ Luogu Duels</h1>
+        <div class="user-info">
+            <span>你好, {{ current_user.luogu_name }}!</span>
+            <a href="{{ url_for('logout') }}">注销</a>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="actions">
+            <button id="create-btn">创建房间</button>
+            <div class="join-box">
+                <input type="text" id="join-id" placeholder="输入房间号">
+                <select id="join-team">
+                    <option value="team1">蓝队</option>
+                    <option value="team2">红队</option>
+                </select>
+                <button id="join-btn">加入房间</button>
+            </div>
+        </div>
+
+        <div class="room-list">
+            <h2>当前对战</h2>
+            {% if rooms %}
+                {% for room in rooms %}
+                <div class="room-item">
+                    <div class="room-info">
+                        <div><strong>ID:</strong> {{ room.id }}</div>
+                        <div><strong>创建者:</strong> {{ room.creator }}</div>
+                        <div><strong>选手:</strong> {{ room.players }}</div>
+                        <div><strong>状态:</strong> <span class="{{ 'status-active' if not room.status == '已结束' else 'status-ended' }}">{{ room.status }}</span></div>
+                    </div>
+                    {% if room.is_in_room %}
+                        <a href="{{ room.url }}" class="btn-enter">进入房间</a>
+                    {% else %}
+                        <a href="{{ room.url }}" class="btn-enter btn-disabled" onclick="event.preventDefault(); alert('你不在这个房间中');">进入房间</a>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            {% else %}
+                <p>暂无房间，快创建一个开始对战吧！</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('create-btn').addEventListener('click', function() {
+            const custom_problems = prompt("请输入题目编号 (用逗号分隔, 例如: P1000,P1001):", "P1000");
+            if (!custom_problems) return;
+            const problem_list = custom_problems.split(',').map(p => p.trim()).filter(p => p);
+            if (problem_list.length === 0) problem_list.push("P1000"); // Fallback
+
+            fetch('/api/create', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({problems: problem_list})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if(data.room_id) {
+                    alert(`房间创建成功！ID: ${data.room_id}\n链接: ${data.url}`);
+                    location.reload();
+                } else {
+                    alert('创建失败: ' + (data.error || '未知错误'));
+                }
+            })
+            .catch(error => console.error('Error:', error));
+        });
+
+        document.getElementById('join-btn').addEventListener('click', function() {
+            const room_id = document.getElementById('join-id').value.trim();
+            const team = document.getElementById('join-team').value;
+            if (!room_id) {
+                alert('请输入房间号');
+                return;
+            }
+
+            fetch('/api/join', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({room_id: room_id, team: team})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if(data.ok) {
+                    alert('加入成功！');
+                    location.href = `/room/${room_id}`;
+                } else {
+                    alert('加入失败: ' + (data.error || '未知错误'));
+                }
+            })
+            .catch(error => console.error('Error:', error));
+        });
+    </script>
+</body>
+</html>

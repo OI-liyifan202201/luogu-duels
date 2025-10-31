@@ -1,0 +1,369 @@
+:root {
+    --bg-primary: #0f0f1b;
+    --bg-secondary: #1a1a2e;
+    --bg-tertiary: #16213e;
+    --text-primary: #ffffff;
+    --text-secondary: #a0aec0;
+    --team1-color: #4da6ff; /* Blue */
+    --team2-color: #ff4d4d; /* Red */
+    --success-color: #00ff88;
+    --danger-color: #ff5555;
+    --border-radius: 8px;
+    --spacing-small: 8px;
+    --spacing-medium: 16px;
+    --spacing-large: 24px;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    padding: 0 5%; /* Left and right margin */
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column; /* 使 body 成为 flex 容器 */
+}
+
+h1, h2, h3, h4 {
+    color: var(--text-primary);
+}
+
+a {
+    color: var(--team1-color);
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+.container {
+    max-width: 600px;
+    margin: var(--spacing-large) auto;
+    padding: var(--spacing-large);
+    background-color: var(--bg-secondary);
+    border-radius: var(--border-radius);
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-medium) 0;
+    border-bottom: 1px solid #2d3748;
+    /* margin-bottom: var(--spacing-large); */
+}
+
+.user-info {
+    display: flex;
+    gap: var(--spacing-medium);
+    align-items: center;
+}
+
+.main-content {
+    /* margin-top: var(--spacing-large); */
+}
+
+.actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-medium);
+    margin-bottom: var(--spacing-large);
+}
+
+.join-box {
+    display: flex;
+    gap: var(--spacing-small);
+    align-items: center;
+}
+
+input, select, button {
+    padding: var(--spacing-small) var(--spacing-medium);
+    border: 1px solid #2d3748;
+    border-radius: var(--border-radius);
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-size: 1em;
+}
+
+button {
+    background-color: var(--team1-color);
+    color: var(--bg-primary);
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.2s;
+}
+
+button:hover {
+    background-color: #3a8fd4;
+}
+
+.btn-enter {
+    background-color: var(--success-color);
+    color: var(--bg-primary);
+}
+
+.btn-enter:hover {
+    background-color: #00cc6f;
+}
+
+.btn-disabled {
+    background-color: #4a5568 !important;
+    cursor: not-allowed;
+}
+
+.room-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: var(--spacing-medium);
+}
+
+.room-item {
+    background-color: var(--bg-secondary);
+    padding: var(--spacing-medium);
+    border-radius: var(--border-radius);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.room-info div {
+    margin-bottom: var(--spacing-small);
+}
+
+.status-active { color: var(--success-color); }
+.status-ended { color: var(--danger-color); }
+
+.card {
+    background-color: var(--bg-secondary);
+    padding: var(--spacing-medium);
+    border-radius: var(--border-radius);
+    margin-bottom: var(--spacing-medium); /* 保持卡片间的间距 */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column; /* 内部元素垂直布局 */
+    flex: 1; /* 占据父容器剩余空间 */
+    min-height: 0; /* 允许 flex 项收缩，防止溢出 */
+    overflow: auto; /* 如果内容过多，允许滚动 */
+}
+
+.layout {
+    display: flex;
+    gap: var(--spacing-large);
+    margin-top: var(--spacing-medium);
+    flex: 1; /* 使 layout 占据 body 的剩余空间 */
+    min-height: 0; /* 允许 flex 项收缩 */
+    height: calc(100vh - 150px); /* 计算高度以填满剩余空间 */
+}
+
+.left-panel {
+    flex: 1; /* 占 1/2 */
+    display: flex;
+    flex-direction: column; /* 垂直布局 */
+}
+
+.right-panel { /* 聊天面板 */
+    flex: 2; /* 占 1/2 */
+    display: flex;
+    flex-direction: column; /* 垂直布局 */
+}
+
+/* 特定卡片的高度调整 */
+#status, #global-info, .card[style*="margin-top"] { /* 左侧卡片 */
+    flex: 0 1 auto; /* 不伸展，可以收缩，初始高度为内容高度 */
+    overflow: auto; /* 如果内容过多，允许滚动 */
+}
+
+#chat-box { /* 右侧聊天卡片 */
+    flex: 1; /* 伸展以填充剩余空间 */
+    display: flex;
+    flex-direction: column; /* 为聊天内容和输入框布局 */
+}
+
+#messages { /* 聊天消息区域 */
+    flex: 1; /* 伸展以填充聊天框的剩余空间 */
+    overflow-y: auto; /* 允许垂直滚动 */
+    border: 1px solid #2d3748;
+    padding: var(--spacing-small);
+    background-color: var(--bg-tertiary);
+    margin-bottom: var(--spacing-medium);
+}
+
+.message {
+    margin-bottom: var(--spacing-small);
+}
+
+.time {
+    color: var(--text-secondary);
+    font-size: 0.8em;
+}
+
+.chat-input {
+    display: flex;
+    gap: var(--spacing-small);
+}
+
+.chat-input input {
+    flex: 1;
+}
+
+.team-score {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: var(--spacing-small);
+}
+
+.team1 { color: var(--team1-color); }
+.team2 { color: var(--team2-color); }
+
+#problem-list {
+    list-style: none;
+}
+
+#problem-list li {
+    padding: var(--spacing-small);
+    margin-bottom: var(--spacing-small);
+    border-radius: var(--border-radius);
+    background-color: var(--bg-tertiary);
+    display: flex; /* 使按钮靠右 */
+    justify-content: space-between;
+    align-items: center;
+}
+
+#problem-list .solved {
+    background-color: rgba(0, 255, 136, 0.1);
+    color: var(--success-color);
+}
+
+#problem-list .unsolved {
+    background-color: rgba(255, 85, 85, 0.1);
+    color: var(--danger-color);
+}
+
+/* 新增：样式化解题者信息 */
+.solved-by {
+    font-size: 0.8em;
+    margin-left: 8px; /* 与题目ID分开一点 */
+}
+.solved-by.team1 {
+    color: var(--team1-color);
+}
+.solved-by.team2 {
+    color: var(--team2-color);
+}
+
+.delete-problem-btn {
+    background-color: var(--danger-color);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 2px 6px;
+    cursor: pointer;
+    font-size: 0.9em;
+}
+
+.delete-problem-btn:hover {
+    background-color: #ff3333;
+}
+
+.team-members {
+    margin-bottom: var(--spacing-small);
+}
+
+.team-members strong {
+    display: inline-block;
+    width: 60px; /* 固定标签宽度 */
+}
+
+.team1 strong { color: var(--team1-color); }
+.team2 strong { color: var(--team2-color); }
+
+#proposals-list, #deletion-proposals-list {
+    list-style: none;
+}
+
+#proposals-list li, #deletion-proposals-list li {
+    padding: var(--spacing-small);
+    margin-bottom: var(--spacing-small);
+    border-radius: var(--border-radius);
+    background-color: var(--bg-tertiary);
+    font-size: 0.9em;
+    display: flex; /* 使按钮靠右 */
+    justify-content: space-between;
+    align-items: center;
+}
+
+#proposals-list li button, #deletion-proposals-list li button {
+    background-color: var(--success-color);
+    color: var(--bg-primary);
+    border: none;
+    border-radius: 4px;
+    padding: 2px 8px;
+    cursor: pointer;
+    font-size: 0.8em;
+    margin-left: 4px; /* 按钮之间留点空隙 */
+}
+
+#proposals-list li button:hover, #deletion-proposals-list li button:hover {
+    background-color: #00cc6f;
+}
+
+/* 为拒绝按钮添加样式 */
+#proposals-list li button:nth-child(2), #deletion-proposals-list li button:nth-child(2) {
+    background-color: var(--danger-color);
+}
+
+#proposals-list li button:nth-child(2):hover, #deletion-proposals-list li button:nth-child(2):hover {
+    background-color: #ff3333;
+}
+
+#winner-animation {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    display: none; /* Initially hidden */
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.win-message {
+    font-size: 4em;
+    color: gold;
+    text-align: center;
+    animation: bounce 1.5s infinite;
+}
+
+@keyframes bounce {
+    0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+    40% { transform: translateY(-30px); }
+    60% { transform: translateY(-15px); }
+}
+
+.form-group {
+    margin-bottom: var(--spacing-medium);
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: var(--spacing-small);
+}
+
+.form-footer {
+    margin-top: var(--spacing-large);
+    text-align: center;
+}
+
+.form-footer a {
+    color: var(--team2-color);
+}
