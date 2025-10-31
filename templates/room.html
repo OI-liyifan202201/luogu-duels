@@ -203,25 +203,34 @@
 
             // ... (更新 proposals 和 deletion proposals 列表) ...
 
-            if (data.finished && !document.getElementById("winner-display")) {
+            if (data.finished && !document.getElementById("winner-display")) { // <--- 检查是否存在
                 const winnerDiv = document.createElement("div");
                 winnerDiv.id = "winner-display";
-                // --- 修复点：使用动态队伍名判断 winnerDiv 样式 ---
                 const winnerTeamIndex = availableTeams.indexOf(data.winner);
                 winnerDiv.innerHTML = `<h3>🏆 胜者: <span id="winner-name" class="${winnerTeamIndex === 0 ? 'team1' : 'team2'}">${data.winner}</span></h3>`;
-                // --- 修复点结束 ---
                 document.getElementById("status").appendChild(winnerDiv);
-                document.getElementById("winner-animation").style.display = "flex";
+                // **关键：确保动画 div 显示**
+                document.getElementById("winner-animation").style.display = "flex"; // <--- 这里也设置显示
             }
         });
 
         socket.on("game_over", (data) => {
-            document.getElementById("winner-animation").style.display = "flex";
-            // --- 修复点：使用动态队伍名判断 game_over 时的样式 ---
+            // 使用 game_over 携带的 teams 信息来同步 availableTeams
+            if (data.teams && data.teams.length >= 2) {
+                availableTeams = data.teams;
+            }
+
+            // 现在 availableTeams 应该是正确的
             const winnerTeamIndex = availableTeams.indexOf(data.winner);
+            if (winnerTeamIndex === -1) {
+                console.error("Game Over: Winner team not found in availableTeams", data.winner, availableTeams);
+                document.getElementById("winner-name").className = ''; // 或者 'unknown-team'
+            } else {
+                document.getElementById("winner-name").className = `${winnerTeamIndex === 0 ? 'team1' : 'team2'}`;
+            }
             document.getElementById("winner-name").textContent = data.winner;
-            document.getElementById("winner-name").className = `${winnerTeamIndex === 0 ? 'team1' : 'team2'}`;
-            // --- 修复点结束 ---
+            // **关键：确保动画 div 显示**
+            document.getElementById("winner-animation").style.display = "flex";
         });
 
         socket.on("proposal_request", (data) => {

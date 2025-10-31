@@ -124,6 +124,8 @@ def fetch_ac_users_for_room(pid: str, room_members: set):
 # Win condition: First team to have any of its members solve ALL problems in the room wins
 # Also ends if all problems are deleted (though unlikely)
 # ----------------------------
+# ... (其他代码) ...
+
 def judge_room(room_id):
     room = rooms[room_id]
     print(f"[DEBUG] Judge loop started for room {room_id}")
@@ -142,8 +144,7 @@ def judge_room(room_id):
                 continue
 
             solved_by_team = None
-            # 遍历动态队伍名
-            for team_name in room.teams.keys():
+            for team_name in room.teams.keys(): # 使用动态队伍名
                 if any(user in ac_users for user in room.teams[team_name]):
                     solved_by_team = team_name
                     break
@@ -157,16 +158,17 @@ def judge_room(room_id):
             room.scores[solved_by_team] += 100
             print(f"[DEBUG] Room {room_id}: {solved_by_team} ({solving_user}) solved {pid}")
 
-            # 修改：检查新的胜利条件
             total_points = len(room.problems) * 100
             win_points = total_points // 2
             if room.scores[solved_by_team] > win_points:
                 room.winner = solved_by_team
                 room.finished = True
                 print(f"[DEBUG] Room {room_id} FINISHED! Winner: {solved_by_team} (Score: {room.scores[solved_by_team]} > {win_points})")
-                socketio.emit("game_over", {"winner": solved_by_team}, room=room_id)
+                # --- 修改点：发送 game_over 时携带完整的房间状态 ---
+                final_status = room.get_status() # 获取完整的最终状态
+                socketio.emit("game_over", final_status, room=room_id) # 发送完整状态
+                # --- 修改点结束 ---
                 break
-
             socketio.emit("update", room.get_status(), room=room_id)
 
         if not room.finished:
