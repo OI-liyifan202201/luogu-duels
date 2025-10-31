@@ -1,0 +1,1 @@
+const defaultTeamNames = ['Team1', 'Team2'];
